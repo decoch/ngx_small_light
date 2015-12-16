@@ -62,7 +62,7 @@ void ngx_http_small_light_imagemagick_term(void *data)
     DestroyMagickWand(ictx->wand);
 }
 
-/** 
+/**
  * following original functions are brought from
  * mod_small_light(Dynamic image transformation module for Apache2) and customed
  */
@@ -385,6 +385,7 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
         } else if (type == NGX_HTTP_SMALL_LIGHT_IMAGE_WEBP) {
 #if defined(MAGICKCORE_WEBP_DELEGATE)
             ictx->type = type;
+            MagickSetImageAlphaChannel(ictx->wand, DeactivateAlphaChannel);
 #else
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                           "WebP is not supported %s:%d",
