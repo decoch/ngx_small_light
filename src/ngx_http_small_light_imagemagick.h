@@ -1,5 +1,5 @@
 /**
-   Copyright (c) 2012-2014 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+   Copyright (c) 2012-2016 Tatsuhiko Kubo <cubicdaiya@gmail.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -41,5 +41,6 @@ void ngx_http_small_light_imagemagick_term(void *data);
 
 void ngx_http_small_light_imagemagick_genesis(void);
 void ngx_http_small_light_imagemagick_terminus(void);
+int ngx_http_small_light_imagemagick_set_thread_limit(int limit);
 
 #endif /* NGX_HTTP_SMALL_LIGHT_IMAGEMAGICK_H */

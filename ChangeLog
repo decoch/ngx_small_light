@@ -1,3 +1,131 @@
+2016-10-02 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* imlib2: change default small_light_imlib2_temp_dir value. Thanks @draskolnikova. refs #70
+
+	* bugfix: small_light_imlib2_temp_dir was not modfiabile.
+
+	* bugfix: failed to load modules dynamically on linux. refs #66
+
+	* bugfix: path-through did not work.
+
+	* 0.9.0 released
+
+2016-08-19 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* Adjust hash bucket size of `small_light_init_params`. Thanks @takano32. refs #65
+
+	* Adjust hash bucket size of `small_light_pattern_define`.
+
+	* 0.8.1 released
+
+2016-07-11 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* imagemagick, imlib2, gd: cropped the center of image when only `cw` and `ch` are given.
+
+	* imagemagick: adjusted image offset automatically. fixes #44
+
+	* bugfix, gd: fixed parameter validations for `sharpen`.
+
+	* bugfix, imlib2: fixed parameter validations for `sharpen` and `blur`.
+
+	* bugfix: fixed strange size and offset calculation behavior. refs #46
+
+	* 0.8.0 released
+
+2016-05-20 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* bugfix: small_light_pattern_define didn't work when small_light_getparam_mode is enabled. It has appeared in v0.7.1.
+
+	* optimize: reduced allocation for parsing parameters.
+
+	* imagemagick: converted the first image instead of the last image in image list. Thanks @dtan4. refs #43
+
+	* 0.7.3 released
+
+2016-05-16 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* bugfix: nginx slows down in request processing for large image. Thanks @osamunmun. refs #41
+
+	* 0.7.2 released
+
+2016-05-06 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* bugfix: the some parameters (sharpen, unsharp, blur) was not available when small_light_getparam_mode is enabled.
+
+	* 0.7.1 released
+
+2016-04-27 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* introduced new directives: small_light_(radius|sigma)_max.
+
+	* set 10 to the maximum geometry value (radius and sigma) for `sharpen` and `unsharp` and `blur` by default.
+
+	* 0.7.0 released
+
+2016-03-19 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* bugfix: fixed compilation error when old ImageMagick version. Thanks @takp. #37
+
+	* 0.6.17 released
+
+2016-03-19 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* feature: introduced new parameter: autoorient. #35
+
+	* 0.6.16 released
+
+2016-02-11 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* feature: dynamic module is available from nginx-1.9.11.
+
+	* 0.6.15 released
+
+2016-01-10 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* config: output message on configure-error.
+
+	* imagemagick: set ThreadResource 1 always.
+
+	* 0.6.14 released
+
+2015-12-19 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* bugfix: fixed a memory leak which caused by a call of MagickGetImageFormat(). Thanks @dmurasaki. #33
+
+	* 0.6.13 released
+
+2015-12-16 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* bugfix: fixed invalid definition for image_exts.
+
+	* 0.6.12 released
+
+2015-09-20 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* feature: supported WebP-input with ImageMagick. Thanks @cgs3238. #31
+
+	* 0.6.11 released
+
+2015-06-29 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* bugfix: fixed the exit status for `./configure`.
+
+	* 0.6.10 released
+
+2015-06-09 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+
+	* bugfix: fixed image corruption by the combination of cropping and rotation. Thanks @gunyoki
+
+	* bugfix: fixed memory corruption when pass-through is enabled.
+
+	* bugfix: fixed memory corruption when imlib2 is selected.
+
+	* bugfix: fixed compilation error for using libjpeg8.
+
+	* removed unused code refs #24. Thanks @kaneshin
+
+	* 0.6.9 released
+
 2015-04-19 Tatsuhiko Kubo <cubicdaiya@gmail.com>
 
 	* bugfix: fixed SEGV when pass-through is enabled for imagemagick and imlib2 and gd.

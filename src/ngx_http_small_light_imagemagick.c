@@ -1,5 +1,5 @@
 /**
-   Copyright (c) 2012-2014 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+   Copyright (c) 2012-2016 Tatsuhiko Kubo <cubicdaiya@gmail.com>
    Copyright (c) 1996-2011 livedoor Co.,Ltd.
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -28,6 +28,27 @@
 
 extern const char *ngx_http_small_light_image_exts[];
 extern const char *ngx_http_small_light_image_types[];
+
+void ngx_http_small_light_imagemagick_adjust_image_offset(ngx_http_request_t *r,
+                                                          ngx_http_small_light_imagemagick_ctx_t *ictx,
+                                                          ngx_http_small_light_image_size_t *sz)
+{
+    MagickBooleanType status;
+    size_t            w, h;
+    ssize_t           x, y;
+
+    status = MagickGetImagePage(ictx->wand, &w, &h, &x, &y);
+    if (status == MagickFalse) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "failed to get image page %s:%d",
+                      __FUNCTION__,
+                      __LINE__);
+        return;
+    }
+
+    sz->sx = (double) x;
+    sz->sy = (double) y;
+}
 
 ngx_int_t ngx_http_small_light_imagemagick_init(ngx_http_request_t *r, ngx_http_small_light_ctx_t *ctx)
 {
@@ -86,6 +107,9 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
     ngx_int_t                               type;
     u_char                                  jpeg_size_opt[32], crop_geo[128], size_geo[128], embedicon_path[256];
     ColorspaceType                          color_space;
+#if MagickLibVersion >= 0x690
+    int                                     autoorient_flg;
+#endif
 
     status = MagickFalse;
 
@@ -95,7 +119,10 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
     ngx_http_small_light_calc_image_size(r, ctx, &sz, 10000.0, 10000.0);
 
     /* prepare */
-    if (sz.jpeghint_flg != 0) {
+    if (sz.jpeghint_flg != 0 &&
+        sz.dw != NGX_HTTP_SMALL_LIGHT_COORD_INVALID_VALUE &&
+        sz.dh != NGX_HTTP_SMALL_LIGHT_COORD_INVALID_VALUE)
+    {
         p = ngx_snprintf((u_char *)jpeg_size_opt, sizeof(jpeg_size_opt) - 1, "%dx%d", (ngx_int_t)sz.dw, (ngx_int_t)sz.dh);
         *p = '\0';
         ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "jpeg_size_opt:%s", jpeg_size_opt);
@@ -112,6 +139,9 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
         return NGX_ERROR;
     }
 
+    /* set the first frame for animated-GIF */
+    MagickSetFirstIterator(ictx->wand);
+
     color_space = MagickGetImageColorspace(ictx->wand);
 
     /* remove all profiles */
@@ -126,38 +156,23 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
         }
     }
 
-    /* calc size. */
-    iw = (double)MagickGetImageWidth(ictx->wand);
-    ih = (double)MagickGetImageHeight(ictx->wand);
-    ngx_http_small_light_calc_image_size(r, ctx, &sz, iw, ih);
-
-    /* pass through. */
-    if (sz.pt_flg != 0) {
-        ctx->of = ctx->inf;
-        return NGX_OK;
-    }
-
     of_orig = MagickGetImageFormat(ictx->wand);
-
-    /* crop, scale. */
     status = MagickTrue;
-    if (sz.scale_flg != 0) {
-        p = ngx_snprintf(crop_geo, sizeof(crop_geo) - 1, "%f!x%f!+%f+%f", sz.sw, sz.sh, sz.sx, sz.sy);
-        *p = '\0';
-        p = ngx_snprintf(size_geo, sizeof(size_geo) - 1, "%f!x%f!",       sz.dw, sz.dh);
-        *p = '\0';
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "crop_geo:%s", crop_geo);
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "size_geo:%s", size_geo);
-        trans_wand = MagickTransformImage(ictx->wand, (char *)crop_geo, (char *)size_geo);
-        if (trans_wand == NULL || trans_wand == ictx->wand) {
+
+#if MagickLibVersion >= 0x690
+    /* auto-orient */
+    autoorient_flg = ngx_http_small_light_parse_flag(NGX_HTTP_SMALL_LIGHT_PARAM_GET_LIT(&ctx->hash, "autoorient"));
+    if (autoorient_flg != 0) {
+        status = MagickAutoOrientImage(ictx->wand);
+        if (status == MagickFalse) {
             r->err_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            DestroyString(of_orig);
             return NGX_ERROR;
         }
-        DestroyMagickWand(ictx->wand);
-        ictx->wand = trans_wand;
     }
+#endif
 
-    /* rotate */
+    /* rotate. */
     if (sz.angle) {
         bg_color = NewPixelWand();
         PixelSetRed(bg_color,   sz.cc.r / 255.0);
@@ -173,7 +188,7 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
             break;
         default:
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "image not rotated. 'angle'(%d) must be 90 or 180 or 270. %s:%d",
+                          "image not rotated. 'angle'(%ui) must be 90 or 180 or 270. %s:%d",
                           sz.angle,
                           __FUNCTION__,
                           __LINE__);
@@ -181,6 +196,47 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
         }
 
         DestroyPixelWand(bg_color);
+    }
+
+    /* calc size. */
+    iw = (double)MagickGetImageWidth(ictx->wand);
+    ih = (double)MagickGetImageHeight(ictx->wand);
+    ngx_http_small_light_calc_image_size(r, ctx, &sz, iw, ih);
+
+    /* adjust image offset automatically */
+    ngx_http_small_light_imagemagick_adjust_image_offset(r, ictx, &sz);
+
+    /* pass through. */
+    if (sz.pt_flg != 0) {
+        ctx->of = ctx->inf;
+        DestroyString(of_orig);
+        return NGX_OK;
+    }
+
+    /* adjust destination size */
+    if (sz.dw == NGX_HTTP_SMALL_LIGHT_COORD_INVALID_VALUE) {
+        sz.dw = sz.sw;
+    }
+    if (sz.dh == NGX_HTTP_SMALL_LIGHT_COORD_INVALID_VALUE) {
+        sz.dh = sz.sh;
+    }
+
+    /* crop, scale. */
+    if (sz.scale_flg != 0) {
+        p = ngx_snprintf(crop_geo, sizeof(crop_geo) - 1, "%f!x%f!+%f+%f", sz.sw, sz.sh, sz.sx, sz.sy);
+        *p = '\0';
+        p = ngx_snprintf(size_geo, sizeof(size_geo) - 1, "%f!x%f!",       sz.dw, sz.dh);
+        *p = '\0';
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "crop_geo:%s", crop_geo);
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, "size_geo:%s", size_geo);
+        trans_wand = MagickTransformImage(ictx->wand, (char *)crop_geo, (char *)size_geo);
+        if (trans_wand == NULL || trans_wand == ictx->wand) {
+            r->err_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            DestroyString(of_orig);
+            return NGX_ERROR;
+        }
+        DestroyMagickWand(ictx->wand);
+        ictx->wand = trans_wand;
     }
 
     /* create canvas then draw image to the canvas. */
@@ -196,6 +252,7 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
         if (status == MagickFalse) {
             r->err_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
             DestroyMagickWand(canvas_wand);
+            DestroyString(of_orig);
             return NGX_ERROR;
         }
 
@@ -203,13 +260,17 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
         if (status == MagickFalse) {
             r->err_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
             DestroyMagickWand(canvas_wand);
+            DestroyString(of_orig);
             return NGX_ERROR;
         }
+
+        ngx_http_small_light_adjust_canvas_image_offset(&sz);
 
         status = MagickCompositeImage(canvas_wand, ictx->wand, AtopCompositeOp, sz.dx, sz.dy);
         if (status == MagickFalse) {
             r->err_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
             DestroyMagickWand(canvas_wand);
+            DestroyString(of_orig);
             return NGX_ERROR;
         }
         DestroyMagickWand(ictx->wand);
@@ -222,44 +283,66 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
         status = MagickTransformImageColorspace(ictx->wand, sRGBColorspace);
         if (status == MagickFalse) {
             r->err_status = NGX_HTTP_INTERNAL_SERVER_ERROR;
+            DestroyString(of_orig);
             return NGX_ERROR;
         }
     }
 
     /* effects. */
     unsharp = NGX_HTTP_SMALL_LIGHT_PARAM_GET_LIT(&ctx->hash, "unsharp");
-    if (unsharp != NULL) {
+    if (ngx_strlen(unsharp) > 0) {
         ParseGeometry(unsharp, &geo);
-        status = MagickUnsharpMaskImage(ictx->wand, geo.rho, geo.sigma, geo.xi, geo.psi);
-        if (status == MagickFalse) {
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "unsharp failed %s:%d",
+        if (geo.rho > ctx->radius_max || geo.sigma > ctx->sigma_max) {
+            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
+                          "As unsharp geometry is too large, ignored. %s:%d",
                           __FUNCTION__,
                           __LINE__);
+        } else {
+            status = MagickUnsharpMaskImage(ictx->wand, geo.rho, geo.sigma, geo.xi, geo.psi);
+            if (status == MagickFalse) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                              "unsharp failed %s:%d",
+                              __FUNCTION__,
+                              __LINE__);
+            }
         }
     }
 
     sharpen = NGX_HTTP_SMALL_LIGHT_PARAM_GET_LIT(&ctx->hash, "sharpen");
-    if (sharpen != NULL) {
+    if (ngx_strlen(sharpen) > 0) {
         ParseGeometry(sharpen, &geo);
-        status = MagickSharpenImage(ictx->wand, geo.rho, geo.sigma);
-        if (status == MagickFalse) {
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "sharpen failed %s:%d",
+        if (geo.rho > ctx->radius_max || geo.sigma > ctx->sigma_max) {
+            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
+                          "As sharpen geometry is too large, ignored. %s:%d",
                           __FUNCTION__,
                           __LINE__);
+        } else {
+            status = MagickSharpenImage(ictx->wand, geo.rho, geo.sigma);
+            if (status == MagickFalse) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                              "sharpen failed %s:%d",
+                              __FUNCTION__,
+                              __LINE__);
+            }
         }
     }
 
     blur = NGX_HTTP_SMALL_LIGHT_PARAM_GET_LIT(&ctx->hash, "blur");
-    if (blur) {
+    if (ngx_strlen(blur) > 0) {
         ParseGeometry(blur, &geo);
-        status = MagickBlurImage(ictx->wand, geo.rho, geo.sigma);
-        if (status == MagickFalse) {
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "blur failed %s:%d",
+        if (geo.rho > ctx->radius_max || geo.sigma > ctx->sigma_max) {
+            ngx_log_error(NGX_LOG_WARN, r->connection->log, 0,
+                          "As blur geometry is too large, ignored. %s:%d",
                           __FUNCTION__,
                           __LINE__);
+        } else {
+            status = MagickBlurImage(ictx->wand, geo.rho, geo.sigma);
+            if (status == MagickFalse) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                              "blur failed %s:%d",
+                              __FUNCTION__,
+                              __LINE__);
+            }
         }
     }
 
@@ -300,6 +383,7 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
                           embedicon,
                           __FUNCTION__,
                           __LINE__);
+            DestroyString(of_orig);
             return NGX_ERROR;
         }
 
@@ -307,10 +391,11 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
         embedicon_path_len = ctx->material_dir->len + ngx_strlen("/") + embedicon_len;
         if (embedicon_path_len > sizeof(embedicon_path) - 1) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "embedicon path is too long. maximun value is %d %s:%d",
+                          "embedicon path is too long. maximun value is %z %s:%d",
                           sizeof(embedicon_path) - 1,
                           __FUNCTION__,
                           __LINE__);
+            DestroyString(of_orig);
             return NGX_ERROR;
         }
 
@@ -325,6 +410,7 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
                           embedicon_path,
                           __FUNCTION__,
                           __LINE__);
+            DestroyString(of_orig);
             return NGX_ERROR;
         }
 
@@ -334,6 +420,7 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
                           embedicon_path,
                           __FUNCTION__,
                           __LINE__);
+            DestroyString(of_orig);
             return NGX_ERROR;
         }
 
@@ -343,6 +430,7 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
                           embedicon_path,
                           __FUNCTION__,
                           __LINE__);
+            DestroyString(of_orig);
             return NGX_ERROR;
         }
 
@@ -354,6 +442,7 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
                           __FUNCTION__,
                           __LINE__);
             DestroyMagickWand(icon_wand);
+            DestroyString(of_orig);
             return NGX_ERROR;
         }
 
@@ -403,8 +492,12 @@ ngx_int_t ngx_http_small_light_imagemagick_process(ngx_http_request_t *r, ngx_ht
         ctx->of = ctx->inf;
     }
 
+    DestroyString(of_orig);
+
     ctx->content        = MagickGetImageBlob(ictx->wand, &sled_image_size);
     ctx->content_length = sled_image_size;
+
+    ngx_pfree(r->pool, ctx->content_orig);
 
     ictx->complete = 1;
 
@@ -419,4 +512,14 @@ void ngx_http_small_light_imagemagick_genesis(void)
 void ngx_http_small_light_imagemagick_terminus(void)
 {
     MagickWandTerminus();
+}
+
+int ngx_http_small_light_imagemagick_set_thread_limit(int limit)
+{
+    MagickBooleanType status;
+    status = MagickSetResourceLimit(ThreadResource, limit);
+    if (status == MagickFalse) {
+        return 0;
+    }
+    return 1;
 }

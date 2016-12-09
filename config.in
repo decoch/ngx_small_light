@@ -19,35 +19,55 @@ unsigned char *out = gdImageWebpPtr(img_gd_webp, &size);
 . auto/feature
 
 if [ $ngx_found = no ]; then
-   exit
+    cat <<EOF
+The compilation test below failed:
+
+$ngx_feature_incs
+$ngx_feature_test
+EOF
+    exit 1
 fi
 
 CORE_LIBS="$CORE_LIBS $ngx_feature_libs"
-ngx_addon_name=ngx_http_small_light
-HTTP_FILTER_MODULES="$HTTP_FILTER_MODULES ngx_http_small_light_module"
 
-NGX_ADDON_SRCS="$NGX_ADDON_SRCS \
-				$ngx_addon_dir/src/ngx_http_small_light_module.c      \
-				$ngx_addon_dir/src/ngx_http_small_light_parser.c      \
-				$ngx_addon_dir/src/ngx_http_small_light_param.c       \
-				$ngx_addon_dir/src/ngx_http_small_light_size.c        \
-				$ngx_addon_dir/src/ngx_http_small_light_type.c        \
-				$ngx_addon_dir/src/ngx_http_small_light_imagemagick.c \
-				$ngx_addon_dir/src/ngx_http_small_light_imlib2.c      \
-				$ngx_addon_dir/src/ngx_http_small_light_jpeg.c        \
-				$ngx_addon_dir/src/ngx_http_small_light_gd.c          \
-				"
+SMALL_LIGHT_SRCS="                                                    \
+                $ngx_addon_dir/src/ngx_http_small_light_module.c      \
+                $ngx_addon_dir/src/ngx_http_small_light_parser.c      \
+                $ngx_addon_dir/src/ngx_http_small_light_param.c       \
+                $ngx_addon_dir/src/ngx_http_small_light_size.c        \
+                $ngx_addon_dir/src/ngx_http_small_light_type.c        \
+                $ngx_addon_dir/src/ngx_http_small_light_imagemagick.c \
+                $ngx_addon_dir/src/ngx_http_small_light_imlib2.c      \
+                $ngx_addon_dir/src/ngx_http_small_light_jpeg.c        \
+                $ngx_addon_dir/src/ngx_http_small_light_gd.c          \
+                "
 
-NGX_ADDON_DEPS="$NGX_ADDON_DEPS \
-				$ngx_addon_dir/src/ngx_http_small_light_module.h      \
-				$ngx_addon_dir/src/ngx_http_small_light_parser.h      \
-				$ngx_addon_dir/src/ngx_http_small_light_param.h       \
-				$ngx_addon_dir/src/ngx_http_small_light_size.h        \
-				$ngx_addon_dir/src/ngx_http_small_light_type.h        \
-				$ngx_addon_dir/src/ngx_http_small_light_imagemagick.h \
-				$ngx_addon_dir/src/ngx_http_small_light_imlib2.h      \
-				$ngx_addon_dir/src/ngx_http_small_light_jpeg.h        \
-				$ngx_addon_dir/src/ngx_http_small_light_gd.h          \
-				"
+SMALL_LIGHT_DEPS="                                                    \
+                $ngx_addon_dir/src/ngx_http_small_light_module.h      \
+                $ngx_addon_dir/src/ngx_http_small_light_parser.h      \
+                $ngx_addon_dir/src/ngx_http_small_light_param.h       \
+                $ngx_addon_dir/src/ngx_http_small_light_size.h        \
+                $ngx_addon_dir/src/ngx_http_small_light_type.h        \
+                $ngx_addon_dir/src/ngx_http_small_light_imagemagick.h \
+                $ngx_addon_dir/src/ngx_http_small_light_imlib2.h      \
+                $ngx_addon_dir/src/ngx_http_small_light_jpeg.h        \
+                $ngx_addon_dir/src/ngx_http_small_light_gd.h          \
+                "
 
 CFLAGS="${CFLAGS} {$CFLAGS} {$GD_WEBP_FLAGS}"
+
+ngx_addon_name=ngx_http_small_light_module
+
+if test -n "$ngx_module_link"; then
+    ngx_module_type=HTTP_AUX_FILTER
+    ngx_module_name=$ngx_addon_name
+    ngx_module_deps="$SMALL_LIGHT_DEPS"
+    ngx_module_srcs="$SMALL_LIGHT_SRCS"
+    ngx_module_libs="$ngx_module_libs $ngx_feature_libs"
+
+   . auto/module
+else
+    HTTP_AUX_FILTER_MODULES="$HTTP_AUX_FILTER_MODULES $ngx_addon_name"
+    NGX_ADDON_SRCS="$NGX_ADDON_SRCS $SMALL_LIGHT_SRCS"
+    NGX_ADDON_DEPS="$NGX_ADDON_DEPS $SMALL_LIGHT_DEPS"
+fi

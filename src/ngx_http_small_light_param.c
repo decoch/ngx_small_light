@@ -1,5 +1,5 @@
 /**
-   Copyright (c) 2012-2014 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+   Copyright (c) 2012-2016 Tatsuhiko Kubo <cubicdaiya@gmail.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -33,14 +33,14 @@ typedef struct ngx_http_small_light_param_t {
 
 static const ngx_http_small_light_param_t ngx_http_small_light_params[] = {
     { ngx_string("p"),         ""},
-    { ngx_string("sx"),        ""},
-    { ngx_string("sy"),        ""},
-    { ngx_string("sw"),        ""},
-    { ngx_string("sh"),        ""},
-    { ngx_string("dx"),        ""},
-    { ngx_string("dy"),        ""},
+    { ngx_string("e"),         NGX_HTTP_SMALL_LIGHT_CONVERTER_IMAGEMAGICK },
+    { ngx_string("q"),         "0"},
+    { ngx_string("of"),        ""},
+    { ngx_string("jpeghint"),  "n"},
     { ngx_string("dw"),        ""},
     { ngx_string("dh"),        ""},
+    { ngx_string("dx"),        ""},
+    { ngx_string("dy"),        ""},
     { ngx_string("da"),        "l"},
     { ngx_string("ds"),        "n"},
     { ngx_string("cw"),        ""},
@@ -49,30 +49,34 @@ static const ngx_http_small_light_param_t ngx_http_small_light_params[] = {
     { ngx_string("bw"),        ""},
     { ngx_string("bh"),        ""},
     { ngx_string("bc"),        "000000"},
+    { ngx_string("sw"),        ""},
+    { ngx_string("sh"),        ""},
+    { ngx_string("sx"),        ""},
+    { ngx_string("sy"),        ""},
     { ngx_string("pt"),        "n"},
-    { ngx_string("q"),         "0"},
-    { ngx_string("of"),        ""},
-    { ngx_string("jpeghint"),  "n"},
-    { ngx_string("rmprof"),    "n"},
+    { ngx_string("sharpen"),   ""},
+    { ngx_string("unsharp"),   ""},
+    { ngx_string("blur"),      ""},
     { ngx_string("embedicon"), ""},
     { ngx_string("ix"),        "0"},
     { ngx_string("iy"),        "0"},
     { ngx_string("angle"),     "0"},
-    { ngx_string("e"),         NGX_HTTP_SMALL_LIGHT_CONVERTER_IMAGEMAGICK },
     { ngx_string("progressive"), "n"},
-    { ngx_string("cmyk2rgb"),  "n"}
+    { ngx_string("cmyk2rgb"),  "n"},
+    { ngx_string("rmprof"),    "n"},
+    { ngx_string("autoorient"),"n"}
 };
 
 static const ngx_str_t ngx_http_small_light_getparams[] = {
     ngx_string("arg_p"),
-    ngx_string("arg_sx"),
-    ngx_string("arg_sy"),
-    ngx_string("arg_sw"),
-    ngx_string("arg_sh"),
-    ngx_string("arg_dx"),
-    ngx_string("arg_dy"),
+    ngx_string("arg_e"),
+    ngx_string("arg_q"),
+    ngx_string("arg_of"),
+    ngx_string("arg_jpeghint"),
     ngx_string("arg_dw"),
     ngx_string("arg_dh"),
+    ngx_string("arg_dx"),
+    ngx_string("arg_dy"),
     ngx_string("arg_da"),
     ngx_string("arg_ds"),
     ngx_string("arg_cw"),
@@ -81,18 +85,22 @@ static const ngx_str_t ngx_http_small_light_getparams[] = {
     ngx_string("arg_bw"),
     ngx_string("arg_bh"),
     ngx_string("arg_bc"),
+    ngx_string("arg_sw"),
+    ngx_string("arg_sh"),
+    ngx_string("arg_sx"),
+    ngx_string("arg_sy"),
     ngx_string("arg_pt"),
-    ngx_string("arg_q"),
-    ngx_string("arg_of"),
-    ngx_string("arg_jpeghint"),
-    ngx_string("arg_rmprof"),
+    ngx_string("arg_sharpen"),
+    ngx_string("arg_unsharp"),
+    ngx_string("arg_blur"),
     ngx_string("arg_embedicon"),
     ngx_string("arg_ix"),
     ngx_string("arg_iy"),
     ngx_string("arg_angle"),
-    ngx_string("arg_e"),
     ngx_string("arg_progressive"),
-    ngx_string("arg_cmyk2rgb")
+    ngx_string("arg_cmyk2rgb"),
+    ngx_string("arg_rmprof"),
+    ngx_string("arg_autoorient")
 };
 
 static void ngx_http_small_light_init_params_default(ngx_http_small_light_ctx_t *ctx)

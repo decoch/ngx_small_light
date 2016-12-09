@@ -1,5 +1,5 @@
 /**
-   Copyright (c) 2012-2014 Tatsuhiko Kubo <cubicdaiya@gmail.com>
+   Copyright (c) 2012-2016 Tatsuhiko Kubo <cubicdaiya@gmail.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -47,9 +47,15 @@ const char *ngx_http_small_light_image_types[] = {
 const char *ngx_http_small_light_image_exts[] = {
     "jpeg",
     "gif",
-    "png"
+    "png",
     "webp"
 };
+
+#ifdef NGX_HTTP_SMALL_LIGHT_IMLIB2_ENABLED
+static ngx_path_init_t  ngx_http_small_light_imlib2_temp_dir = {
+    ngx_string("small_light_imlib2_temp"), { 1, 2, 0 }
+};
+#endif
 
 static void *ngx_http_small_light_create_srv_conf(ngx_conf_t *cf);
 static void *ngx_http_small_light_create_loc_conf(ngx_conf_t *cf);
@@ -57,7 +63,10 @@ static char *ngx_http_small_light_merge_srv_conf(ngx_conf_t *cf, void *parent, v
 static char *ngx_http_small_light_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child);
 static char *ngx_http_small_light_pattern_define(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static char *ngx_http_small_light_material_dir(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static ngx_int_t ngx_http_small_light_image_read(ngx_http_request_t *r, ngx_chain_t *in, size_t buffer_size, ngx_http_small_light_ctx_t *ctx);
+static ngx_int_t ngx_http_small_light_image_read(ngx_http_request_t *r,
+                                                 ngx_chain_t *in,
+                                                 size_t buffer_size,
+                                                 ngx_http_small_light_ctx_t *ctx);
 static ngx_int_t ngx_http_small_light_finish(ngx_http_request_t *r, ngx_chain_t *out);
 static ngx_int_t ngx_http_small_light_init(ngx_conf_t *cf);
 static ngx_int_t ngx_http_small_light_init_worker(ngx_cycle_t *cycle);
@@ -92,6 +101,24 @@ static ngx_command_t  ngx_http_small_light_commands[] = {
     },
 
     {
+        ngx_string("small_light_radius_max"),
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+        ngx_conf_set_num_slot,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        offsetof(ngx_http_small_light_conf_t, radius_max),
+        NULL
+    },
+
+    {
+        ngx_string("small_light_sigma_max"),
+        NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+        ngx_conf_set_num_slot,
+        NGX_HTTP_LOC_CONF_OFFSET,
+        offsetof(ngx_http_small_light_conf_t, sigma_max),
+        NULL
+    },
+
+    {
         ngx_string("small_light_material_dir"),
         NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1,
         ngx_http_small_light_material_dir,
@@ -100,6 +127,7 @@ static ngx_command_t  ngx_http_small_light_commands[] = {
         NULL
     },
 
+#ifdef NGX_HTTP_SMALL_LIGHT_IMLIB2_ENABLED
     { 
         ngx_string("small_light_imlib2_temp_dir"),
         NGX_HTTP_SRV_CONF|NGX_CONF_TAKE1234,
@@ -108,6 +136,7 @@ static ngx_command_t  ngx_http_small_light_commands[] = {
         offsetof(ngx_http_small_light_conf_t, imlib2_temp_dir),
         NULL
     },
+#endif
 
     {
         ngx_string("small_light_buffer"),
@@ -153,6 +182,10 @@ ngx_module_t  ngx_http_small_light_module = {
 static ngx_int_t ngx_http_small_light_init_worker(ngx_cycle_t *cycle) {
     ngx_http_small_light_imagemagick_genesis();
 
+    if (ngx_http_small_light_imagemagick_set_thread_limit(1) == 0) {
+        ngx_log_error(NGX_LOG_WARN, cycle->log, 0,
+                      "failed to set thread limit");
+    }
     return NGX_OK;
 }
 
@@ -218,8 +251,8 @@ static ngx_int_t ngx_http_small_light_header_filter(ngx_http_request_t *r)
     if (loc_conf->enable_getparam_mode) {
         if (ngx_http_small_light_init_getparams(r, ctx, srv_conf) != NGX_OK) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "failed to analyze parameters:%s %s:%d",
-                          define_pattern.data,
+                          "failed to analyze parameters:%V %s:%d",
+                          &define_pattern,
                           __FUNCTION__,
                           __LINE__);
             return NGX_ERROR;
@@ -227,8 +260,8 @@ static ngx_int_t ngx_http_small_light_header_filter(ngx_http_request_t *r)
     } else {
         if (ngx_http_small_light_init_params(r, ctx, &define_pattern, srv_conf) != NGX_OK) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "failed to analyze parameters:%s %s:%d",
-                          define_pattern.data,
+                          "failed to analyze parameters:%V %s:%d",
+                          &define_pattern,
                           __FUNCTION__,
                           __LINE__);
             return NGX_ERROR;
@@ -238,7 +271,7 @@ static ngx_int_t ngx_http_small_light_header_filter(ngx_http_request_t *r)
     hash_init.hash        = &ctx->hash;
     hash_init.key         = ngx_hash_key_lc;
     hash_init.max_size    = 128;
-    hash_init.bucket_size = ngx_cacheline_size;
+    hash_init.bucket_size = 128;
     hash_init.name        = "small_light_init_params";
     hash_init.pool        = ctx->params.keys.pool;
     hash_init.temp_pool   = NULL;
@@ -253,7 +286,11 @@ static ngx_int_t ngx_http_small_light_header_filter(ngx_http_request_t *r)
 
     ctx->inf             = (char *)r->headers_out.content_type.data;
     ctx->material_dir    = &srv_conf->material_dir;
-    ctx->imlib2_temp_dir = loc_conf->imlib2_temp_dir;
+#ifdef NGX_HTTP_SMALL_LIGHT_IMLIB2_ENABLED
+    ctx->imlib2_temp_dir = srv_conf->imlib2_temp_dir;
+#endif
+    ctx->radius_max      = loc_conf->radius_max;
+    ctx->sigma_max       = loc_conf->sigma_max;
 
     if (r->headers_out.content_length_n < 0) {
         ctx->content_length = loc_conf->buffer_size;
@@ -362,9 +399,8 @@ static ngx_int_t ngx_http_small_light_body_filter(ngx_http_request_t *r, ngx_cha
                                                 &ngx_http_small_light_module,
                                                 NGX_HTTP_UNSUPPORTED_MEDIA_TYPE);
     }
-    rc = ctx->converter.process(r, ctx);
 
-    ngx_pfree(r->pool, ctx->content_orig);
+    rc = ctx->converter.process(r, ctx);
 
     if (rc != NGX_OK) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
@@ -454,17 +490,28 @@ static void *ngx_http_small_light_create_loc_conf(ngx_conf_t *cf)
     loc_conf->enable               = NGX_CONF_UNSET;
     loc_conf->enable_getparam_mode = NGX_CONF_UNSET;
     loc_conf->buffer_size          = NGX_CONF_UNSET_SIZE;
+    loc_conf->radius_max           = NGX_CONF_UNSET_UINT;
+    loc_conf->sigma_max            = NGX_CONF_UNSET_UINT;
     return loc_conf;
 }
 
 static char *ngx_http_small_light_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 {
+#ifdef NGX_HTTP_SMALL_LIGHT_IMLIB2_ENABLED
+    ngx_http_small_light_conf_t *prev = parent;
+    ngx_http_small_light_conf_t *conf = child;
+
+    if (ngx_conf_merge_path_value(cf, &conf->imlib2_temp_dir,
+                                  prev->imlib2_temp_dir,
+                                  &ngx_http_small_light_imlib2_temp_dir)
+        != NGX_OK)
+    {
+        return NGX_CONF_ERROR;
+    }
+#endif
+
     return NGX_CONF_OK;
 }
-
-static ngx_path_init_t  ngx_http_small_light_imlib2_temp_dir = {
-    ngx_string("/tmp"), { 1, 2, 0 }
-};
 
 static char *ngx_http_small_light_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 {
@@ -474,15 +521,10 @@ static char *ngx_http_small_light_merge_loc_conf(ngx_conf_t *cf, void *parent, v
     ngx_conf_merge_value(conf->enable,               prev->enable,               0);
     ngx_conf_merge_value(conf->enable_getparam_mode, prev->enable_getparam_mode, 0);
 
-    if (ngx_conf_merge_path_value(cf, &conf->imlib2_temp_dir,
-                                  prev->imlib2_temp_dir,
-                                  &ngx_http_small_light_imlib2_temp_dir)
-        != NGX_OK)
-    {
-        return NGX_CONF_ERROR;
-    }
-
     ngx_conf_merge_size_value(conf->buffer_size, prev->buffer_size, 1 * 1024 * 1024);
+
+    ngx_conf_merge_uint_value(conf->radius_max, prev->radius_max, 10);
+    ngx_conf_merge_uint_value(conf->sigma_max, prev->sigma_max, 10);
 
     return NGX_CONF_OK;
 }
@@ -510,7 +552,7 @@ static char *ngx_http_small_light_pattern_define(ngx_conf_t *cf, ngx_command_t *
     hash.hash        = &srv_conf->hash;
     hash.key         = ngx_hash_key_lc;
     hash.max_size    = 128;
-    hash.bucket_size = ngx_cacheline_size;
+    hash.bucket_size = 128;
     hash.name        = "small_light_pattern_define";
     hash.pool        = srv_conf->patterns.keys.pool;
     hash.temp_pool   = NULL;
@@ -541,7 +583,11 @@ static char *ngx_http_small_light_material_dir(ngx_conf_t *cf, ngx_command_t *cm
 }    
 
 
-static ngx_int_t ngx_http_small_light_image_read(ngx_http_request_t *r, ngx_chain_t *in, size_t buffer_size, ngx_http_small_light_ctx_t *ctx)
+static ngx_int_t
+ngx_http_small_light_image_read(ngx_http_request_t *r,
+                                ngx_chain_t *in,
+                                size_t buffer_size,
+                                ngx_http_small_light_ctx_t *ctx)
 {
     u_char      *p;
     size_t       size, rest;
@@ -561,9 +607,9 @@ static ngx_int_t ngx_http_small_light_image_read(ngx_http_request_t *r, ngx_chai
     p = ctx->last;
 
     for (cl=in;cl!=NULL;cl=cl->next) {
-        b       = cl->buf;
-        size    = b->last - b->pos;
-        rest    = ctx->content + ctx->content_length - p;
+        b    = cl->buf;
+        size = b->last - b->pos;
+        rest = ctx->content + ctx->content_length - p;
         if (size > rest) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log,
                           0,
